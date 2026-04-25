@@ -26,6 +26,22 @@ images, scripts, and extensionless files like `Makefile`.
 - macOS 13 or newer
 - Swift toolchain compatible with the package
 
+## Install
+
+Install with Homebrew:
+
+```sh
+brew tap marlonjames71/tap
+brew install ow
+```
+
+Verify the install:
+
+```sh
+ow --version
+ow --help
+```
+
 ## Install From Source
 
 Clone the repo and build with SwiftPM:
@@ -43,8 +59,6 @@ Run the built binary:
 ```
 
 For local use, copy or symlink `.build/release/ow` somewhere on your `PATH`.
-
-Homebrew installation is planned.
 
 ## Quick Start
 
