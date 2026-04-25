@@ -60,6 +60,7 @@ struct Wow: ParsableCommand {
         let info = [
             "\(bold)OW\(reset) \(dim)(Open With)\(reset)",
             "\(blue)----------------\(reset)",
+            "\(white)version\(reset)     \(OWVersion.current)",
             "\(white)mode\(reset)        default app manager",
             "\(white)scope\(reset)       extensions + per-file overrides",
             "\(white)index\(reset)       OW-created overrides",

@@ -7,6 +7,10 @@ and this project uses semantic versioning once releases begin.
 
 ## [Unreleased]
 
+No unreleased changes.
+
+## [0.1.0] - 2026-04-25
+
 ### Added
 
 - Initial Swift CLI package for managing macOS Open With defaults.
@@ -36,7 +40,3 @@ and this project uses semantic versioning once releases begin.
 
 - Quarantine removal is explicit. OW warns by default and only removes
   quarantine metadata when requested by flag or persistent config.
-
-## [0.1.0] - TBD
-
-Initial public release.
