@@ -237,4 +237,5 @@ MIT
 
 ## Credit
 
-[Claude Desktop](https://claude.com/download) and [Codex](https://openai.com/codex/) was used to create this CLI.
+[Claude Desktop](https://claude.com/download) and [Codex](https://openai.com/codex/) were used to help create this CLI.
+
