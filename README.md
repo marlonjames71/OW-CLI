@@ -210,6 +210,31 @@ Run `ow --help` or `ow help <subcommand>` for command-specific help.
 - Some Launch Services changes may require Finder or Launch Services to refresh
   before every UI surface reflects the new default.
 
+## How OW Compares To [duti](https://github.com/moretension/duti)
+
+duti is a mature lower-level tool for setting Launch Services handlers by UTI
+and URL scheme. It is powerful and scriptable, especially if you already know
+the bundle IDs, UTIs, and roles you want to configure.
+
+OW focuses on the Finder-style Open With workflow:
+
+- use file extensions instead of requiring UTIs
+- resolve apps by name or bundle ID
+- set per-file Open With overrides
+- track OW-created overrides
+- warn when overrides prevent files from following a new default
+- handle macOS quarantine behavior
+- apply filename/glob rules across folders
+
+If you need URL scheme handling or raw UTI-based bulk configuration, duti may be
+a better fit. If you want an ergonomic CLI for file defaults and per-file Open
+With behavior, OW is built for that.
+
+
 ## License
 
 MIT
+
+## Credit
+
+[Claude Desktop](https://claude.com/download) and [Codex](https://openai.com/codex/) was used to create this CLI.
