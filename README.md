@@ -62,6 +62,15 @@ Run the built binary:
 
 For local use, copy or symlink `.build/release/ow` somewhere on your `PATH`.
 
+## Release Automation
+
+When a non-prerelease GitHub Release is published, OW runs a GitHub Actions
+workflow that updates `marlonjames71/homebrew-tap` with the new release tarball
+URL and SHA256.
+
+The workflow requires a repository secret named `HOMEBREW_TAP_TOKEN` with write
+access to the `marlonjames71/homebrew-tap` repository.
+
 ## Quick Start
 
 Set the default app for a file type:

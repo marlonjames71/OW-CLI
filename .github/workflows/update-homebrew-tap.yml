@@ -1,0 +1,29 @@
+name: Update Homebrew Tap
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-homebrew-tap:
+    name: Update Homebrew tap formula
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Bump Homebrew formula
+        uses: mislav/bump-homebrew-formula-action@v3
+        with:
+          formula-name: ow
+          formula-path: Formula/ow.rb
+          homebrew-tap: marlonjames71/homebrew-tap
+          tag-name: ${{ github.event.release.tag_name }}
+          download-url: https://github.com/marlonjames71/OW-CLI/archive/refs/tags/${{ github.event.release.tag_name }}.tar.gz
+          commit-message: |
+            ow {{version}}
+
+            Update OW formula for {{version}}.
+        env:
+          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
