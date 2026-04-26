@@ -3,14 +3,21 @@ name: Update Homebrew Tap
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag to publish to the Homebrew tap, such as v0.2.0"
+        required: true
 
 jobs:
   update-homebrew-tap:
     name: Update Homebrew tap formula
-    if: ${{ !github.event.release.prerelease }}
+    if: ${{ github.event_name == 'workflow_dispatch' || !github.event.release.prerelease }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag_name }}
 
     steps:
       - name: Bump Homebrew formula
@@ -19,8 +26,8 @@ jobs:
           formula-name: ow
           formula-path: Formula/ow.rb
           homebrew-tap: marlonjames71/homebrew-tap
-          tag-name: ${{ github.event.release.tag_name }}
-          download-url: https://github.com/marlonjames71/OW-CLI/archive/refs/tags/${{ github.event.release.tag_name }}.tar.gz
+          tag-name: ${{ env.RELEASE_TAG }}
+          download-url: https://github.com/marlonjames71/OW-CLI/archive/refs/tags/${{ env.RELEASE_TAG }}.tar.gz
           commit-message: |
             ow {{version}}
 
