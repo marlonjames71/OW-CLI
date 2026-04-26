@@ -170,6 +170,72 @@ struct LaunchServicesClientTests {
         #expect(ConfigStore.load() == OWConfig(quarantine: .clear))
     }
 
+    @Test func resolvesBuiltInFileTypeGroupsAndAliases() throws {
+        let images = try #require(FileTypeGroup.named("images"))
+        #expect(images.extensions.contains("jpg"))
+        #expect(images.extensions.contains("png"))
+        #expect(images.extensions.contains("heic"))
+
+        #expect(FileTypeGroup.named("image") == images)
+        #expect(FileTypeGroup.named("pictures") == images)
+        #expect(FileTypeGroup.named("missing") == nil)
+    }
+
+    @Test func createsAndUpdatesCustomFileTypeGroups() throws {
+        let storeURL = try temporaryGroupsStoreURL()
+        setenv("OW_GROUPS_STORE", storeURL.path, 1)
+        defer { unsetenv("OW_GROUPS_STORE") }
+
+        let empty = try GroupsStore.createGroup(named: "design", extensions: [])
+        #expect(empty.name == "design")
+        #expect(empty.extensions.isEmpty)
+        #expect(empty.source == .custom)
+
+        let appended = try GroupsStore.append([".psd", "fig", ".sketch", "psd"], toGroupNamed: "design")
+        #expect(appended.extensions == ["psd", "fig", "sketch"])
+
+        let removed = try GroupsStore.remove([".fig"], fromGroupNamed: "design")
+        #expect(removed.extensions == ["psd", "sketch"])
+    }
+
+    @Test func customizesBuiltInFileTypeGroupsWithAppendAndRemoveLayers() throws {
+        let storeURL = try temporaryGroupsStoreURL()
+        setenv("OW_GROUPS_STORE", storeURL.path, 1)
+        defer { unsetenv("OW_GROUPS_STORE") }
+
+        let removed = try GroupsStore.remove([".png", ".raw"], fromGroupNamed: "images")
+        #expect(!removed.extensions.contains("png"))
+        #expect(!removed.extensions.contains("raw"))
+        #expect(removed.extensions.contains("jpg"))
+
+        let appended = try GroupsStore.append([".psd", ".png"], toGroupNamed: "images")
+        #expect(appended.extensions.contains("psd"))
+        #expect(appended.extensions.contains("png"))
+        #expect(!appended.extensions.contains("raw"))
+
+        let customization = try #require(GroupsStore.customization(forBuiltInGroup: "images"))
+        #expect(customization.appended == ["psd"])
+        #expect(customization.removed == ["raw"])
+    }
+
+    @Test func listsBuiltInAndCustomFileTypeGroups() throws {
+        let storeURL = try temporaryGroupsStoreURL()
+        setenv("OW_GROUPS_STORE", storeURL.path, 1)
+        defer { unsetenv("OW_GROUPS_STORE") }
+
+        _ = try GroupsStore.createGroup(named: "design", extensions: [".psd"])
+        _ = try GroupsStore.remove([".raw"], fromGroupNamed: "images")
+
+        let groups = GroupsStore.allGroups()
+        let images = try #require(groups.first { $0.name == "images" })
+        let design = try #require(groups.first { $0.name == "design" })
+
+        #expect(images.source == .builtIn)
+        #expect(!images.extensions.contains("raw"))
+        #expect(design.source == .custom)
+        #expect(design.extensions == ["psd"])
+    }
+
     private func temporaryLaunchServicesPlist(_ handlers: [[String: Any]]) throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("ow-tests-\(UUID().uuidString)", isDirectory: true)
@@ -204,5 +270,12 @@ struct LaunchServicesClientTests {
             .appendingPathComponent("ow-config-store-tests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory.appendingPathComponent("config.json")
+    }
+
+    private func temporaryGroupsStoreURL() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ow-groups-store-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appendingPathComponent("groups.json")
     }
 }

@@ -6,6 +6,6 @@ struct OW: ParsableCommand {
         commandName: "ow",
         abstract: "Manage default apps for file types on macOS.",
         version: OWVersion.current,
-        subcommands: [Get.self, Set.self, List.self, Reset.self, RuleCommand.self, ConfigCommand.self, Wow.self]
+        subcommands: [Get.self, Set.self, List.self, Reset.self, RuleCommand.self, GroupCommand.self, ConfigCommand.self, Wow.self]
     )
 }
