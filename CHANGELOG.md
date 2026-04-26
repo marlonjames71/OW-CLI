@@ -9,6 +9,20 @@ and this project uses semantic versioning once releases begin.
 
 No unreleased changes.
 
+## [0.2.0] - 2026-04-26
+
+### Added
+
+- `ow group` commands for setting defaults across related file type groups.
+- Built-in groups for images, video, audio, code, documents, and archives.
+- Custom groups with `ow group create`, `append`, `remove`, `show`, and
+  `delete`.
+- `ow group show` for displaying every group and its file types.
+- Local group customization storage at
+  `~/Library/Application Support/ow/groups.json`.
+- Swift Testing coverage for built-in groups, custom groups, and built-in group
+  append/remove layers.
+
 ## [0.1.0] - 2026-04-25
 
 ### Added
