@@ -14,6 +14,8 @@ images, scripts, and extensionless files like `Makefile`.
 - Set a per-file Open With override for one file or many piped files.
 - Show the current default for an extension or file.
 - List apps that can open a file type.
+- Set defaults for built-in or custom groups like images, video, audio, code,
+  documents, archives, or your own project-specific groups.
 - Reset extension defaults or per-file overrides.
 - Save rules for filename/glob patterns and apply them to a directory tree.
 - Track OW-created per-file overrides so extension changes can warn about files
@@ -89,6 +91,13 @@ List apps that can open a file type:
 ow list .pdf
 ```
 
+Set defaults for a group of related file types:
+
+```sh
+ow group images set Preview
+ow group code set "Visual Studio Code"
+```
+
 Reset a default or remove a per-file override:
 
 ```sh
@@ -152,6 +161,86 @@ Rules are stored at:
 ~/Library/Application Support/ow/rules.json
 ```
 
+## Groups
+
+Groups apply one app to a set of related file extensions. They are a convenience
+layer over `ow set .ext <app>` for each extension in the group.
+
+List available groups:
+
+```sh
+ow group list
+```
+
+Show every group and its file types:
+
+```sh
+ow group show
+```
+
+Show the extensions in one group:
+
+```sh
+ow group images show
+```
+
+Set an app for a group:
+
+```sh
+ow group images set Preview
+ow group video set IINA
+ow group code set "Visual Studio Code"
+```
+
+Current built-in groups are `images`, `video`, `audio`, `code`, `documents`,
+and `archives`.
+
+Create an empty custom group, then add file types later:
+
+```sh
+ow group create design
+ow group design append .psd .fig .sketch
+```
+
+You can also create a custom group with file types immediately:
+
+```sh
+ow group create design .psd .fig .sketch
+```
+
+Remove file types from a custom group:
+
+```sh
+ow group design remove .fig
+```
+
+Delete a custom group:
+
+```sh
+ow group delete design
+```
+
+Built-in groups can be customized locally:
+
+```sh
+ow group images append .psd .ai
+ow group images remove .raw
+```
+
+For built-in groups, `append` and `remove` do not edit OW's shipped group
+definitions. OW stores local additions and exclusions, then resolves the
+effective group as:
+
+```text
+built-in extensions + appended extensions - removed extensions
+```
+
+Custom groups and built-in group customizations are stored at:
+
+```text
+~/Library/Application Support/ow/groups.json
+```
+
 ## Quarantine Handling
 
 macOS may attach quarantine metadata to files downloaded from browsers, Mail,
@@ -195,6 +284,11 @@ ow set [--clear-quarantine] <extension-or-file> [app]
 ow list <extension>
 ow reset [--all] [-y] <extensions-or-files...>
 ow rule <add|list|remove|apply>
+ow group list
+ow group show
+ow group create <name> [extensions...]
+ow group delete <name>
+ow group <name> <show|set|append|remove>
 ow config [quarantine [warn|clear|ignore]]
 ```
 
