@@ -166,8 +166,39 @@ struct LaunchServicesClientTests {
 
         #expect(ConfigStore.load() == OWConfig())
 
-        try ConfigStore.save(OWConfig(quarantine: .clear))
-        #expect(ConfigStore.load() == OWConfig(quarantine: .clear))
+        try ConfigStore.save(OWConfig(quarantine: .clear, exportPath: "/tmp/ow-export"))
+        #expect(ConfigStore.load() == OWConfig(quarantine: .clear, exportPath: "/tmp/ow-export"))
+    }
+
+    @Test func readsLegacyConfigWhenCurrentConfigDoesNotExist() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ow-config-migration-tests-\(UUID().uuidString)", isDirectory: true)
+        let legacyURL = directory
+            .appendingPathComponent("legacy/config.json")
+        let currentURL = directory
+            .appendingPathComponent(".config/ow/config.json")
+        try FileManager.default.createDirectory(
+            at: legacyURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+
+        let legacyConfig = OWConfig(quarantine: .ignore, exportPath: "/tmp/legacy")
+        let data = try JSONEncoder().encode(legacyConfig)
+        try data.write(to: legacyURL)
+
+        setenv("OW_CONFIG_DIR", directory.appendingPathComponent(".config/ow").path, 1)
+        setenv("OW_LEGACY_CONFIG_DIR", directory.appendingPathComponent("legacy").path, 1)
+        unsetenv("OW_CONFIG_STORE")
+        defer {
+            unsetenv("OW_CONFIG_DIR")
+            unsetenv("OW_LEGACY_CONFIG_DIR")
+        }
+
+        #expect(ConfigStore.load() == legacyConfig)
+
+        try ConfigStore.save(OWConfig(quarantine: .clear, exportPath: "/tmp/current"))
+        #expect(FileManager.default.fileExists(atPath: currentURL.path))
+        #expect(ConfigStore.load() == OWConfig(quarantine: .clear, exportPath: "/tmp/current"))
     }
 
     @Test func resolvesBuiltInFileTypeGroupsAndAliases() throws {

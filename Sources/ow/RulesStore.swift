@@ -27,16 +27,16 @@ struct Rule: Codable, Equatable {
     }
 }
 
-/// Persists rules to ~/Library/Application Support/ow/rules.json.
+/// Persists rules to ~/.config/ow/rules.json.
 enum RulesStore {
 
     static var storeURL: URL {
-        StorageSupport.appSupportFile("rules.json")
+        StorageSupport.configFile("rules.json")
     }
 
     static func load() -> [Rule] {
         guard
-            let data = try? Data(contentsOf: storeURL),
+            let data = try? Data(contentsOf: StorageSupport.readableConfigFile("rules.json")),
             let rules = try? JSONDecoder().decode([Rule].self, from: data)
         else { return [] }
         return rules

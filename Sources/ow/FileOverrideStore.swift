@@ -22,14 +22,14 @@ struct StoredFileOverride: Codable, Equatable {
 enum FileOverrideStore {
 
     static var storeURL: URL {
-        StorageSupport.appSupportFile("file-overrides.json", envOverride: "OW_OVERRIDE_STORE")
+        StorageSupport.configFile("file-overrides.json", envOverride: "OW_OVERRIDE_STORE")
     }
 
     static func load() -> [StoredFileOverride] {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         guard
-            let data = try? Data(contentsOf: storeURL),
+            let data = try? Data(contentsOf: StorageSupport.readableConfigFile("file-overrides.json", envOverride: "OW_OVERRIDE_STORE")),
             let overrides = try? decoder.decode([StoredFileOverride].self, from: data)
         else {
             return []

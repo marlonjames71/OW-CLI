@@ -132,7 +132,7 @@ find ~/projects -name Makefile | ow set "Visual Studio Code"
 OW keeps a local index of overrides it creates at:
 
 ```text
-~/Library/Application Support/ow/file-overrides.json
+~/.config/ow/file-overrides.json
 ```
 
 That index lets OW warn you when a file-specific override will prevent a file
@@ -167,7 +167,7 @@ ow rule remove Makefile
 Rules are stored at:
 
 ```text
-~/Library/Application Support/ow/rules.json
+~/.config/ow/rules.json
 ```
 
 ## Groups
@@ -247,7 +247,7 @@ built-in extensions + appended extensions - removed extensions
 Custom groups and built-in group customizations are stored at:
 
 ```text
-~/Library/Application Support/ow/groups.json
+~/.config/ow/groups.json
 ```
 
 ## Quarantine Handling
@@ -279,10 +279,17 @@ ow config
 ow config quarantine
 ```
 
+Set a default export path:
+
+```sh
+ow config export-path ~/Downloads
+ow config export-path
+```
+
 Config is stored at:
 
 ```text
-~/Library/Application Support/ow/config.json
+~/.config/ow/config.json
 ```
 
 ## Commands
@@ -299,6 +306,7 @@ ow group create <name> [extensions...]
 ow group delete <name>
 ow group <name> <show|set|append|remove>
 ow config [quarantine [warn|clear|ignore]]
+ow config export-path [path]
 ```
 
 Run `ow --help` or `ow help <subcommand>` for command-specific help.
@@ -312,6 +320,8 @@ Run `ow --help` or `ow help <subcommand>` for command-specific help.
   only index overrides it creates, plus perform a bounded scan for common cases.
 - Some Launch Services changes may require Finder or Launch Services to refresh
   before every UI surface reflects the new default.
+- OW stores user-managed state in `~/.config/ow`. Existing files from older
+  releases in `~/Library/Application Support/ow` are still read as a fallback.
 
 ## How OW Compares To [duti](https://github.com/moretension/duti)
 
@@ -341,4 +351,3 @@ MIT
 ## Credit
 
 [Claude Desktop](https://claude.com/download) and [Codex](https://openai.com/codex/) were used to help create this CLI.
-

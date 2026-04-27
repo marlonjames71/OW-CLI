@@ -34,7 +34,7 @@ enum GroupsStoreError: Error, LocalizedError {
     }
 }
 
-/// Persists user-managed group state to ~/Library/Application Support/ow/groups.json.
+/// Persists user-managed group state to ~/.config/ow/groups.json.
 ///
 /// Built-in groups are intentionally kept in code so OW can improve them in
 /// future releases. This store only records user intent layered over those
@@ -42,11 +42,11 @@ enum GroupsStoreError: Error, LocalizedError {
 /// removed from built-ins. The effective group is computed at read time.
 enum GroupsStore {
     private static var storeURL: URL {
-        StorageSupport.appSupportFile("groups.json", envOverride: "OW_GROUPS_STORE")
+        StorageSupport.configFile("groups.json", envOverride: "OW_GROUPS_STORE")
     }
 
     static func load() -> GroupsData {
-        guard let data = try? Data(contentsOf: storeURL) else {
+        guard let data = try? Data(contentsOf: StorageSupport.readableConfigFile("groups.json", envOverride: "OW_GROUPS_STORE")) else {
             return GroupsData()
         }
         return (try? JSONDecoder().decode(GroupsData.self, from: data)) ?? GroupsData()

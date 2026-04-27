@@ -19,18 +19,19 @@ enum QuarantinePolicy: String, Codable, CaseIterable {
 
 struct OWConfig: Codable, Equatable {
     var quarantine: QuarantinePolicy = .warn
+    var exportPath: String?
 }
 
-/// Persists OW user preferences to ~/Library/Application Support/ow/config.json.
+/// Persists OW user preferences to ~/.config/ow/config.json.
 enum ConfigStore {
 
     static var storeURL: URL {
-        StorageSupport.appSupportFile("config.json", envOverride: "OW_CONFIG_STORE")
+        StorageSupport.configFile("config.json", envOverride: "OW_CONFIG_STORE")
     }
 
     static func load() -> OWConfig {
         guard
-            let data = try? Data(contentsOf: storeURL),
+            let data = try? Data(contentsOf: StorageSupport.readableConfigFile("config.json", envOverride: "OW_CONFIG_STORE")),
             let config = try? JSONDecoder().decode(OWConfig.self, from: data)
         else {
             return OWConfig()

@@ -16,13 +16,19 @@ struct ConfigCommand: ParsableCommand {
           ow config quarantine warn
           ow config quarantine clear
           ow config quarantine ignore
+
+        Show or set the default export path:
+
+          ow config export-path
+          ow config export-path ~/Downloads
         """,
-        subcommands: [Quarantine.self]
+        subcommands: [Quarantine.self, ExportPath.self]
     )
 
     func run() throws {
         let config = ConfigStore.load()
         print("quarantine: \(config.quarantine.rawValue)  (\(config.quarantine.description))")
+        print("export-path: \(config.exportPath ?? "not set")")
     }
 }
 
@@ -53,5 +59,30 @@ extension ConfigCommand {
 extension QuarantinePolicy: ExpressibleByArgument {
     init?(argument: String) {
         self.init(rawValue: argument.lowercased())
+    }
+}
+
+extension ConfigCommand {
+    struct ExportPath: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "export-path",
+            abstract: "View or set the default export path."
+        )
+
+        @Argument(help: "Directory or .owconfig file path. Omit to show the current path.")
+        var path: String?
+
+        func run() throws {
+            let config = ConfigStore.load()
+            guard let path else {
+                print("export-path: \(config.exportPath ?? "not set")")
+                return
+            }
+
+            var updatedConfig = config
+            updatedConfig.exportPath = (path as NSString).expandingTildeInPath
+            try ConfigStore.save(updatedConfig)
+            print("export-path: \(updatedConfig.exportPath ?? "not set")")
+        }
     }
 }
