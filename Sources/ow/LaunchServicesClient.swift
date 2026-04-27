@@ -144,6 +144,32 @@ enum LaunchServicesClient {
         return apps.isEmpty ? scanApplications(forExtension: normalizedExt, uti: uti) : apps
     }
 
+    static func customDefaultApps() -> [DefaultAppAssociation] {
+        let handlers = loadDatabase()["LSHandlers"] as? [[String: Any]] ?? []
+        var defaultsByExtension: [String: DefaultAppAssociation] = [:]
+
+        for handler in handlers {
+            guard
+                let ext = handlerFilenameExtension(handler),
+                let bundleID = roleBundleID(from: handler),
+                let app = AppResolver.resolve(bundleID: bundleID)
+            else {
+                continue
+            }
+
+            defaultsByExtension[ext] = DefaultAppAssociation(
+                fileExtension: ext,
+                appName: app.name,
+                bundleID: app.bundleID,
+                appPath: app.url.path
+            )
+        }
+
+        return defaultsByExtension.values.sorted {
+            $0.fileExtension.localizedCaseInsensitiveCompare($1.fileExtension) == .orderedAscending
+        }
+    }
+
     // MARK: - Direct database write
 
     private static var databaseURL: URL {

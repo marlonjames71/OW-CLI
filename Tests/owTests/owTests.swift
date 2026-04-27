@@ -267,6 +267,80 @@ struct LaunchServicesClientTests {
         #expect(design.extensions == ["psd"])
     }
 
+    @Test func parsesExportSectionNamesAndAliases() throws {
+        let sections = try ExportSectionParser.selectedSections(only: "d,g,fon", exclude: nil)
+        #expect(sections == [.defaults, .groups, .fileOverrideNotes])
+
+        let withoutRules = try ExportSectionParser.selectedSections(only: nil, exclude: "r")
+        #expect(!withoutRules.contains(.rules))
+        #expect(withoutRules.contains(.defaults))
+        #expect(withoutRules.contains(.fileOverrideNotes))
+    }
+
+    @Test func encodesAndDecodesOWConfigArchive() throws {
+        let archive = OWConfigArchive(
+            exportedAt: Date(timeIntervalSince1970: 1_775_000_000),
+            sections: [.config, .fileOverrideNotes],
+            defaults: nil,
+            groups: nil,
+            rules: nil,
+            config: OWConfig(quarantine: .warn, exportPath: "/tmp/exports"),
+            fileOverrideNotes: [
+                FileOverrideNote(
+                    path: "/Users/example/Desktop/test.txt",
+                    fileExtension: "txt",
+                    appName: "TextEdit",
+                    bundleID: "com.apple.TextEdit",
+                    appPath: "/System/Applications/TextEdit.app"
+                ),
+            ]
+        )
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(archive)
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(OWConfigArchive.self, from: data)
+        #expect(decoded == archive)
+    }
+
+    @Test func exportFileOverrideNotesSkipStalePaths() throws {
+        let storeURL = try temporaryOverrideStoreURL()
+        setenv("OW_OVERRIDE_STORE", storeURL.path, 1)
+        defer { unsetenv("OW_OVERRIDE_STORE") }
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ow-export-notes-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let existing = directory.appendingPathComponent("existing.txt")
+        let missing = directory.appendingPathComponent("missing.txt")
+        FileManager.default.createFile(atPath: existing.path, contents: Data())
+
+        try FileOverrideStore.save([
+            StoredFileOverride(
+                path: existing.path,
+                fileExtension: "txt",
+                appName: "TextEdit",
+                bundleID: "com.apple.TextEdit",
+                appPath: "/System/Applications/TextEdit.app",
+                updatedAt: Date()
+            ),
+            StoredFileOverride(
+                path: missing.path,
+                fileExtension: "txt",
+                appName: "TextEdit",
+                bundleID: "com.apple.TextEdit",
+                appPath: "/System/Applications/TextEdit.app",
+                updatedAt: Date()
+            ),
+        ])
+
+        let notes = Export.fileOverrideNotes()
+        #expect(notes.map(\.path) == [existing.path])
+    }
+
     private func temporaryLaunchServicesPlist(_ handlers: [[String: Any]]) throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("ow-tests-\(UUID().uuidString)", isDirectory: true)
