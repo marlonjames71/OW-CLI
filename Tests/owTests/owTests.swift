@@ -45,6 +45,68 @@ struct LaunchServicesClientTests {
         #expect(handlers.first?["LSHandlerURLScheme"] as? String == "example")
     }
 
+    @Test func launchServicesWritesCreateBackupBeforeReplacingDatabase() throws {
+        let url = try temporaryLaunchServicesPlist([
+            [
+                "LSHandlerContentTag": "txt",
+                "LSHandlerContentTagClass": "public.filename-extension",
+                "LSHandlerRoleAll": "com.example.old",
+            ],
+        ])
+
+        setenv("OW_LAUNCHSERVICES_PLIST", url.path, 1)
+        defer { unsetenv("OW_LAUNCHSERVICES_PLIST") }
+
+        let app = AppInfo(
+            name: "TextEdit",
+            bundleID: "com.apple.TextEdit",
+            url: URL(fileURLWithPath: "/System/Applications/TextEdit.app")
+        )
+        try LaunchServicesClient.setDefaultApp(app, forExtension: ".txt")
+
+        let backupURLs = try FileManager.default.contentsOfDirectory(
+            at: url.deletingLastPathComponent(),
+            includingPropertiesForKeys: nil
+        ).filter { $0.lastPathComponent.contains(".ow-backup-") }
+
+        #expect(backupURLs.count == 1)
+        let backupHandlers = try loadHandlers(from: backupURLs[0])
+        #expect(backupHandlers.first?["LSHandlerRoleAll"] as? String == "com.example.old")
+
+        let updatedHandlers = try loadHandlers(from: url)
+        #expect(updatedHandlers.contains { handler in
+            handler["LSHandlerContentTag"] as? String == "txt"
+                && handler["LSHandlerRoleAll"] as? String == "com.apple.TextEdit"
+        })
+    }
+
+    @Test func launchServicesWriteRefusesCorruptExistingDatabase() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ow-corrupt-ls-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("com.apple.launchservices.secure.plist")
+        try Data("not a plist".utf8).write(to: url)
+
+        setenv("OW_LAUNCHSERVICES_PLIST", url.path, 1)
+        defer { unsetenv("OW_LAUNCHSERVICES_PLIST") }
+
+        let app = AppInfo(
+            name: "TextEdit",
+            bundleID: "com.apple.TextEdit",
+            url: URL(fileURLWithPath: "/System/Applications/TextEdit.app")
+        )
+
+        do {
+            try LaunchServicesClient.setDefaultApp(app, forExtension: ".txt")
+            Issue.record("Expected corrupt Launch Services database to be rejected.")
+        } catch let error as OWError {
+            #expect(error.localizedDescription.contains("Launch Services database is invalid"))
+        }
+
+        let contents = try String(contentsOf: url, encoding: .utf8)
+        #expect(contents == "not a plist")
+    }
+
     @Test func resetAllPreservesURLSchemeHandlers() throws {
         let url = try temporaryLaunchServicesPlist([
             [

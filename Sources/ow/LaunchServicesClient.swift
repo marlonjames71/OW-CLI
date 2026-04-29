@@ -188,17 +188,51 @@ enum LaunchServicesClient {
         return [:]
     }
 
+    private static func loadDatabaseForMutation() throws -> [String: Any] {
+        guard FileManager.default.fileExists(atPath: databaseURL.path) else {
+            return [:]
+        }
+
+        let data = try Data(contentsOf: databaseURL)
+        guard let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else {
+            throw OWError.launchServicesDatabaseInvalid(databaseURL.path)
+        }
+        return plist
+    }
+
     private static func saveDatabase(_ root: [String: Any]) throws {
         let directory = databaseURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let data = try PropertyListSerialization.data(fromPropertyList: root, format: .binary, options: 0)
-        try data.write(to: databaseURL, options: .atomic)
+
+        let backupURL = try backupDatabaseIfPresent()
+        let tempURL = directory.appendingPathComponent(".\(databaseURL.lastPathComponent).ow-write-\(UUID().uuidString)")
+
+        do {
+            try data.write(to: tempURL, options: .atomic)
+            try validateLaunchServicesPlist(at: tempURL)
+            try replaceDatabase(with: tempURL)
+            try validateLaunchServicesPlist(at: databaseURL)
+        } catch {
+            try? FileManager.default.removeItem(at: tempURL)
+            if let backupURL {
+                do {
+                    try restoreDatabase(from: backupURL)
+                } catch let restoreError {
+                    throw OWError.launchServicesRestoreFailed(
+                        writeError: error.localizedDescription,
+                        restoreError: restoreError.localizedDescription
+                    )
+                }
+            }
+            throw error
+        }
     }
 
     /// Mirrors Finder's Launch Services plist entries for both the resolved UTI
     /// and the literal filename extension.
     private static func writeToDatabase(bundleID: String, uti: String, ext: String) throws {
-        var root = loadDatabase()
+        var root = try loadDatabaseForMutation()
         var handlers = root["LSHandlers"] as? [[String: Any]] ?? []
         handlers.removeAll { handler in
             handlerContentType(handler) == uti || handlerFilenameExtension(handler) == ext
@@ -371,6 +405,10 @@ enum LaunchServicesClient {
     // MARK: - Verification
 
     private static func currentDefaultBundleID(ext: String, uti: String) -> String? {
+        if getenv("OW_LAUNCHSERVICES_PLIST") != nil {
+            return databaseDefaultBundleID(ext: ext, uti: uti)
+        }
+
         if let bundleID = defaultAppFromTemporaryFile(forExtension: ext)?.bundleID {
             return bundleID
         }
@@ -390,6 +428,10 @@ enum LaunchServicesClient {
         if let bundleID = LSCopyDefaultRoleHandlerForContentType(
             uti as CFString, .editor
         )?.takeRetainedValue() as String? {
+            return bundleID
+        }
+
+        if let bundleID = databaseDefaultBundleID(ext: ext, uti: uti) {
             return bundleID
         }
 
@@ -431,7 +473,7 @@ enum LaunchServicesClient {
     /// Removes handler entries from the Launch Services plist that match
     /// the given predicate.
     private static func removeHandlers(matching predicate: ([String: Any]) -> Bool) throws {
-        var root = loadDatabase()
+        var root = try loadDatabaseForMutation()
         guard var handlers = root["LSHandlers"] as? [[String: Any]] else {
             return
         }
@@ -440,6 +482,68 @@ enum LaunchServicesClient {
         root["LSHandlers"] = handlers
 
         try saveDatabase(root)
+    }
+
+    private static func backupDatabaseIfPresent() throws -> URL? {
+        guard FileManager.default.fileExists(atPath: databaseURL.path) else {
+            return nil
+        }
+
+        try validateLaunchServicesPlist(at: databaseURL)
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMddHHmmss"
+        let stamp = formatter.string(from: Date())
+        let backupURL = databaseURL.deletingLastPathComponent()
+            .appendingPathComponent("\(databaseURL.lastPathComponent).ow-backup-\(stamp)-\(UUID().uuidString)")
+        try FileManager.default.copyItem(at: databaseURL, to: backupURL)
+        try validateLaunchServicesPlist(at: backupURL)
+        return backupURL
+    }
+
+    private static func replaceDatabase(with tempURL: URL) throws {
+        if FileManager.default.fileExists(atPath: databaseURL.path) {
+            _ = try FileManager.default.replaceItemAt(databaseURL, withItemAt: tempURL)
+        } else {
+            try FileManager.default.moveItem(at: tempURL, to: databaseURL)
+        }
+    }
+
+    private static func restoreDatabase(from backupURL: URL) throws {
+        try validateLaunchServicesPlist(at: backupURL)
+        let restoreURL = databaseURL.deletingLastPathComponent()
+            .appendingPathComponent(".\(databaseURL.lastPathComponent).ow-restore-\(UUID().uuidString)")
+        try FileManager.default.copyItem(at: backupURL, to: restoreURL)
+        do {
+            try replaceDatabase(with: restoreURL)
+            try validateLaunchServicesPlist(at: databaseURL)
+        } catch {
+            try? FileManager.default.removeItem(at: restoreURL)
+            throw error
+        }
+    }
+
+    private static func validateLaunchServicesPlist(at url: URL) throws {
+        _ = try Data(contentsOf: url)
+        guard try isValidPlistWithPlutil(url) else {
+            throw OWError.launchServicesDatabaseInvalid(url.path)
+        }
+        let data = try Data(contentsOf: url)
+        guard (try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]) != nil else {
+            throw OWError.launchServicesDatabaseInvalid(url.path)
+        }
+    }
+
+    private static func isValidPlistWithPlutil(_ url: URL) throws -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/plutil")
+        process.arguments = ["-lint", url.path]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        process.waitUntilExit()
+        return process.terminationStatus == 0
     }
 
     // MARK: - Cache invalidation

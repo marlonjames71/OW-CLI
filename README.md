@@ -383,6 +383,9 @@ Run `ow --help` or `ow help <subcommand>` for command-specific help.
 ## Notes And Limitations
 
 - Extension defaults are system-wide Launch Services settings.
+- Before OW writes Launch Services settings, it creates a backup, validates the
+  generated plist with `plutil`, writes atomically, validates the final plist,
+  and restores the backup if validation or writing fails.
 - Per-file overrides are stored as `com.apple.LaunchServices.OpenWith`
   extended attributes on the file itself.
 - Finder-created per-file overrides are not centrally indexed by macOS. OW can
