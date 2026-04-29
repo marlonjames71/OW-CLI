@@ -18,6 +18,11 @@ struct LaunchServicesClientTests {
         #expect(LaunchServicesClient.uti(forExtension: "md") == "public.markdown")
     }
 
+    @Test func rejectsSyntheticDynamicUTIsForUnknownExtensions() {
+        #expect(LaunchServicesClient.uti(forExtension: "") == nil)
+        #expect(LaunchServicesClient.uti(forExtension: ".owunregisteredtest") == nil)
+    }
+
     @Test func resetExtensionRemovesUTIAndFilenameExtensionHandlers() throws {
         let url = try temporaryLaunchServicesPlist([
             [
@@ -78,6 +83,10 @@ struct LaunchServicesClientTests {
             handler["LSHandlerContentTag"] as? String == "txt"
                 && handler["LSHandlerRoleAll"] as? String == "com.apple.TextEdit"
         })
+        #expect(updatedHandlers.contains { handler in
+            handler["LSHandlerContentType"] as? String == "public.plain-text"
+                && handler["LSHandlerRoleAll"] as? String == "com.apple.TextEdit"
+        })
     }
 
     @Test func launchServicesWriteRefusesCorruptExistingDatabase() throws {
@@ -105,6 +114,142 @@ struct LaunchServicesClientTests {
 
         let contents = try String(contentsOf: url, encoding: .utf8)
         #expect(contents == "not a plist")
+    }
+
+    @Test func launchServicesWriteUsesFilenameExtensionOnlyForUnknownExtensions() throws {
+        let url = try temporaryLaunchServicesPlist([
+            [
+                "LSHandlerContentTag": "txt",
+                "LSHandlerContentTagClass": "public.filename-extension",
+                "LSHandlerRoleAll": "com.example.old",
+            ],
+        ])
+
+        setenv("OW_LAUNCHSERVICES_PLIST", url.path, 1)
+        defer { unsetenv("OW_LAUNCHSERVICES_PLIST") }
+
+        let app = AppInfo(
+            name: "TextEdit",
+            bundleID: "com.apple.TextEdit",
+            url: URL(fileURLWithPath: "/System/Applications/TextEdit.app")
+        )
+
+        try LaunchServicesClient.setDefaultApp(app, forExtension: ".owunregisteredtest")
+
+        let handlers = try loadHandlers(from: url)
+        #expect(handlers.contains { handler in
+            handler["LSHandlerContentTag"] as? String == "txt"
+                && handler["LSHandlerRoleAll"] as? String == "com.example.old"
+        })
+        #expect(handlers.contains { handler in
+            handler["LSHandlerContentTag"] as? String == "owunregisteredtest"
+                && handler["LSHandlerContentTagClass"] as? String == "public.filename-extension"
+                && handler["LSHandlerRoleAll"] as? String == "com.apple.TextEdit"
+        })
+        #expect(!handlers.contains { handler in
+            (handler["LSHandlerContentType"] as? String)?.hasPrefix("dyn.") == true
+        })
+    }
+
+    @Test func resetUnknownExtensionRemovesFilenameExtensionHandler() throws {
+        let url = try temporaryLaunchServicesPlist([
+            [
+                "LSHandlerContentTag": "owunregisteredtest",
+                "LSHandlerContentTagClass": "public.filename-extension",
+                "LSHandlerRoleAll": "com.apple.TextEdit",
+            ],
+            [
+                "LSHandlerContentTag": "txt",
+                "LSHandlerContentTagClass": "public.filename-extension",
+                "LSHandlerRoleAll": "com.example.old",
+            ],
+        ])
+
+        setenv("OW_LAUNCHSERVICES_PLIST", url.path, 1)
+        defer { unsetenv("OW_LAUNCHSERVICES_PLIST") }
+
+        try LaunchServicesClient.resetDefaultApp(forExtension: ".owunregisteredtest")
+
+        let handlers = try loadHandlers(from: url)
+        #expect(!handlers.contains { handler in
+            handler["LSHandlerContentTag"] as? String == "owunregisteredtest"
+        })
+        #expect(handlers.contains { handler in
+            handler["LSHandlerContentTag"] as? String == "txt"
+        })
+    }
+
+    @Test func readsUnknownExtensionDefaultFromFilenameExtensionHandler() throws {
+        let url = try temporaryLaunchServicesPlist([
+            [
+                "LSHandlerContentTag": "owunregisteredtest",
+                "LSHandlerContentTagClass": "public.filename-extension",
+                "LSHandlerRoleAll": "com.apple.TextEdit",
+            ],
+        ])
+
+        setenv("OW_LAUNCHSERVICES_PLIST", url.path, 1)
+        defer { unsetenv("OW_LAUNCHSERVICES_PLIST") }
+
+        let app = try #require(try LaunchServicesClient.getDefaultApp(forExtension: ".owunregisteredtest"))
+        #expect(app.bundleID == "com.apple.TextEdit")
+    }
+
+    @Test func exportsUnknownExtensionDefaultsFromFilenameExtensionHandlers() throws {
+        let url = try temporaryLaunchServicesPlist([
+            [
+                "LSHandlerContentTag": "owunregisteredtest",
+                "LSHandlerContentTagClass": "public.filename-extension",
+                "LSHandlerRoleAll": "com.apple.TextEdit",
+            ],
+        ])
+
+        setenv("OW_LAUNCHSERVICES_PLIST", url.path, 1)
+        defer { unsetenv("OW_LAUNCHSERVICES_PLIST") }
+
+        let defaults = LaunchServicesClient.customDefaultApps()
+        let association = try #require(defaults.first { $0.fileExtension == "owunregisteredtest" })
+        #expect(association.bundleID == "com.apple.TextEdit")
+    }
+
+    @Test func mixedKnownAndUnknownGroupExtensionsUseSafeHandlers() throws {
+        let plistURL = try temporaryLaunchServicesPlist([])
+        let groupsURL = try temporaryGroupsStoreURL()
+        setenv("OW_LAUNCHSERVICES_PLIST", plistURL.path, 1)
+        setenv("OW_GROUPS_STORE", groupsURL.path, 1)
+        defer {
+            unsetenv("OW_LAUNCHSERVICES_PLIST")
+            unsetenv("OW_GROUPS_STORE")
+        }
+
+        let group = try GroupsStore.createGroup(named: "stuff", extensions: [".txt", ".flux", ".md"])
+        let app = AppInfo(
+            name: "CotEditor",
+            bundleID: "com.coteditor.CotEditor",
+            url: URL(fileURLWithPath: "/Applications/CotEditor.app")
+        )
+
+        for ext in group.extensions {
+            try LaunchServicesClient.setDefaultApp(app, forExtension: ext)
+        }
+
+        let handlers = try loadHandlers(from: plistURL)
+        #expect(handlers.contains { handler in
+            handler["LSHandlerContentType"] as? String == "public.plain-text"
+                && handler["LSHandlerRoleAll"] as? String == app.bundleID
+        })
+        #expect(handlers.contains { handler in
+            handler["LSHandlerContentType"] as? String == "public.markdown"
+                && handler["LSHandlerRoleAll"] as? String == app.bundleID
+        })
+        #expect(handlers.contains { handler in
+            handler["LSHandlerContentTag"] as? String == "flux"
+                && handler["LSHandlerContentTagClass"] as? String == "public.filename-extension"
+                && handler["LSHandlerRoleAll"] as? String == app.bundleID
+        })
+        #expect(!handlers.contains { handler in
+            (handler["LSHandlerContentType"] as? String)?.hasPrefix("dyn.") == true
+        })
     }
 
     @Test func resetAllPreservesURLSchemeHandlers() throws {
@@ -137,7 +282,11 @@ struct LaunchServicesClientTests {
     @Test func findsPerFileOverridesForExtension() throws {
         let storeURL = try temporaryOverrideStoreURL()
         setenv("OW_OVERRIDE_STORE", storeURL.path, 1)
-        defer { unsetenv("OW_OVERRIDE_STORE") }
+        setenv("OW_DISABLE_SYSTEM_REFRESH", "1", 1)
+        defer {
+            unsetenv("OW_OVERRIDE_STORE")
+            unsetenv("OW_DISABLE_SYSTEM_REFRESH")
+        }
 
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("ow-override-scan-\(UUID().uuidString)", isDirectory: true)
@@ -179,7 +328,11 @@ struct LaunchServicesClientTests {
     @Test func recordsAndRemovesPerFileOverrides() throws {
         let storeURL = try temporaryOverrideStoreURL()
         setenv("OW_OVERRIDE_STORE", storeURL.path, 1)
-        defer { unsetenv("OW_OVERRIDE_STORE") }
+        setenv("OW_DISABLE_SYSTEM_REFRESH", "1", 1)
+        defer {
+            unsetenv("OW_OVERRIDE_STORE")
+            unsetenv("OW_DISABLE_SYSTEM_REFRESH")
+        }
 
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("ow-override-store-\(UUID().uuidString)", isDirectory: true)
@@ -219,6 +372,25 @@ struct LaunchServicesClientTests {
             excludingBundleID: preview.bundleID
         )
         #expect(afterRemoval.isEmpty)
+    }
+
+    @Test func perFileOverrideRejectsDirectories() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ow-directory-xattr-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let app = AppInfo(
+            name: "TextEdit",
+            bundleID: "com.apple.TextEdit",
+            url: URL(fileURLWithPath: "/System/Applications/TextEdit.app")
+        )
+
+        do {
+            try ExtendedAttributesClient.setDefaultApp(app, forFile: directory)
+            Issue.record("Expected directory target to be rejected.")
+        } catch let error as OWError {
+            #expect(error.localizedDescription.contains("Expected a file path"))
+        }
     }
 
     @Test func loadsAndSavesConfig() throws {

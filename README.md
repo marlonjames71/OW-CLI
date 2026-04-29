@@ -83,6 +83,13 @@ ow set .txt CotEditor
 ow set .jpg Preview
 ```
 
+For custom extensions macOS does not recognize yet, OW writes only the same
+filename-extension handler Finder writes from the Info pane:
+
+```sh
+ow set .owconfig TextEdit
+```
+
 If you omit the app, OW opens an interactive picker:
 
 ```sh
@@ -383,6 +390,8 @@ Run `ow --help` or `ow help <subcommand>` for command-specific help.
 ## Notes And Limitations
 
 - Extension defaults are system-wide Launch Services settings.
+- For unknown extensions, OW writes only a filename-extension handler, matching
+  Finder's Info pane behavior. It does not write `dyn.*` content-type handlers.
 - Before OW writes Launch Services settings, it creates a backup, validates the
   generated plist with `plutil`, writes atomically, validates the final plist,
   and restores the backup if validation or writing fails.

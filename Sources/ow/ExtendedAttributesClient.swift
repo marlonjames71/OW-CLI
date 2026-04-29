@@ -23,6 +23,7 @@ enum ExtendedAttributesClient {
 
     /// Returns the per-file default app for the given file, if one has been set.
     static func getDefaultApp(forFile url: URL) throws -> AppInfo? {
+        try validateRegularFile(url)
         let path = url.path
         let size = getxattr(path, key, nil, 0, 0, 0)
         guard size > 0 else { return nil }
@@ -41,6 +42,7 @@ enum ExtendedAttributesClient {
 
     /// Writes a per-file default app association for the given file.
     static func setDefaultApp(_ app: AppInfo, forFile url: URL) throws {
+        try validateRegularFile(url)
         let payload = Payload(
             version: 0,
             path: app.url.path,
@@ -62,10 +64,14 @@ enum ExtendedAttributesClient {
     }
 
     static func isQuarantined(_ url: URL) -> Bool {
-        getxattr(url.path, quarantineKey, nil, 0, 0, 0) > 0
+        guard (try? isRegularFile(url)) == true else {
+            return false
+        }
+        return getxattr(url.path, quarantineKey, nil, 0, 0, 0) > 0
     }
 
     static func clearQuarantine(forFile url: URL) throws {
+        try validateRegularFile(url)
         let result = removexattr(url.path, quarantineKey, 0)
         if result == 0 {
             refreshFinder(for: url)
@@ -81,6 +87,7 @@ enum ExtendedAttributesClient {
     /// Returns `true` if an override was removed, `false` if there wasn't one.
     @discardableResult
     static func removeOverride(forFile url: URL) throws -> Bool {
+        try validateRegularFile(url)
         let result = removexattr(url.path, key, 0)
         if result == 0 {
             try? FileOverrideStore.remove(forFile: url)
@@ -96,11 +103,26 @@ enum ExtendedAttributesClient {
         throw OWError.xattrWriteError(errno)
     }
 
+    private static func validateRegularFile(_ url: URL) throws {
+        guard try isRegularFile(url) else {
+            throw OWError.notARegularFile(url.path)
+        }
+    }
+
+    private static func isRegularFile(_ url: URL) throws -> Bool {
+        let values = try url.resourceValues(forKeys: [.isRegularFileKey])
+        return values.isRegularFile == true
+    }
+
     // MARK: - Cache invalidation
 
     /// Tells lsd that the Launch Services handler database has changed so
     /// Finder and other clients pick up the new per-file association immediately.
     private static func notifySystemOfChange() {
+        guard systemRefreshAllowed else {
+            return
+        }
+
         CFNotificationCenterPostNotification(
             CFNotificationCenterGetDistributedCenter(),
             CFNotificationName("com.apple.LaunchServices.databaseChanged" as CFString),
@@ -111,6 +133,10 @@ enum ExtendedAttributesClient {
     /// Tells Finder to re-read the metadata for this specific file, so the
     /// Get Info panel reflects the new xattr without needing to reopen.
     private static func refreshFinder(for url: URL) {
+        guard systemRefreshAllowed else {
+            return
+        }
+
         let script = "tell application \"Finder\" to update item POSIX file \"\(url.path)\""
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
@@ -119,5 +145,9 @@ enum ExtendedAttributesClient {
         process.standardError = FileHandle.nullDevice
         try? process.run()
         process.waitUntilExit()
+    }
+
+    private static var systemRefreshAllowed: Bool {
+        getenv("OW_DISABLE_SYSTEM_REFRESH") == nil
     }
 }

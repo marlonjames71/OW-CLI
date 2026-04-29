@@ -13,6 +13,7 @@ enum OWError: Error, CustomStringConvertible {
     case defaultChangeNotApplied(ext: String, expected: String, actual: String?)
     case launchServicesDatabaseInvalid(String)
     case launchServicesRestoreFailed(writeError: String, restoreError: String)
+    case notARegularFile(String)
     case xattrReadError(Int32)
     case xattrWriteError(Int32)
     case noTarget
@@ -32,6 +33,8 @@ enum OWError: Error, CustomStringConvertible {
             return "Launch Services database is invalid: \(path)"
         case .launchServicesRestoreFailed(let writeError, let restoreError):
             return "Launch Services write failed (\(writeError)), and restoring the backup also failed (\(restoreError))"
+        case .notARegularFile(let path):
+            return "Expected a file path, not a folder or missing path: \(path)"
         case .xattrReadError(let code):
             return "Could not read file association (errno \(code))"
         case .xattrWriteError(let code):

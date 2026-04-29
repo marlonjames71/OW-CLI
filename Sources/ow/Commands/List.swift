@@ -13,7 +13,20 @@ struct List: ParsableCommand {
     var extension_: String
 
     func run() throws {
-        let ext = extension_.hasPrefix(".") ? String(extension_.dropFirst()) : extension_
+        let ext = LaunchServicesClient.normalizedExtension(extension_)
+        guard !ext.isEmpty else {
+            throw ValidationError("Provide a file extension, such as .pdf.")
+        }
+
+        guard LaunchServicesClient.uti(forExtension: ext) != nil else {
+            throw ValidationError("""
+            Cannot list apps for .\(ext) files because macOS has not registered that file type yet.
+
+            OW can still set a default when you provide the app:
+              ow set .\(ext) <App Name>
+            """)
+        }
+
         let apps = try LaunchServicesClient.listApps(forExtension: ext)
 
         guard !apps.isEmpty else {

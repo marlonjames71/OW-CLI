@@ -15,11 +15,27 @@ enum LaunchServicesClient {
 
     static func uti(forExtension ext: String) -> String? {
         let normalizedExt = normalizedExtension(ext)
+        guard !normalizedExt.isEmpty else {
+            return nil
+        }
+
         if let knownUTI = knownUTIsByExtension[normalizedExt] {
             return knownUTI
         }
 
-        return UTType(filenameExtension: normalizedExt)?.identifier
+        guard let type = UTType(filenameExtension: normalizedExt) else {
+            return nil
+        }
+
+        // macOS can synthesize dynamic `dyn.*` identifiers for extensions that
+        // no installed app has declared as a real type. Do not expose those as
+        // writable content types; callers can still use a raw filename-
+        // extension handler, matching Finder's Info pane behavior.
+        guard !type.identifier.hasPrefix("dyn.") else {
+            return nil
+        }
+
+        return type.identifier
     }
 
     private static let knownUTIsByExtension: [String: String] = [
@@ -57,19 +73,23 @@ enum LaunchServicesClient {
     /// Returns the current default app for the given file extension.
     static func getDefaultApp(forExtension ext: String) throws -> AppInfo? {
         let normalizedExt = normalizedExtension(ext)
-        guard let uti = uti(forExtension: normalizedExt) else {
+        guard !normalizedExt.isEmpty else {
             throw OWError.unknownExtension(normalizedExt)
         }
+        let uti = uti(forExtension: normalizedExt)
 
-        if let app = defaultAppFromTemporaryFile(forExtension: normalizedExt) {
-            return app
+        if let uti {
+            if let app = defaultAppFromTemporaryFile(forExtension: normalizedExt) {
+                return app
+            }
+
+            if let bundleID = LSCopyDefaultRoleHandlerForContentType(
+                uti as CFString, .all
+            )?.takeRetainedValue() as String? {
+                return AppResolver.resolve(bundleID: bundleID)
+            }
         }
 
-        if let bundleID = LSCopyDefaultRoleHandlerForContentType(
-            uti as CFString, .all
-        )?.takeRetainedValue() as String? {
-            return AppResolver.resolve(bundleID: bundleID)
-        }
         if let bundleID = databaseDefaultBundleID(ext: normalizedExt, uti: uti) {
             return AppResolver.resolve(bundleID: bundleID)
         }
@@ -83,9 +103,10 @@ enum LaunchServicesClient {
     /// and covers both UTI-based and filename-extension handlers.
     static func setDefaultApp(_ app: AppInfo, forExtension ext: String) throws {
         let normalizedExt = normalizedExtension(ext)
-        guard let uti = uti(forExtension: normalizedExt) else {
+        guard !normalizedExt.isEmpty else {
             throw OWError.unknownExtension(normalizedExt)
         }
+        let uti = uti(forExtension: normalizedExt)
 
         try writeToDatabase(bundleID: app.bundleID, uti: uti, ext: normalizedExt)
         refreshLaunchServices()
@@ -103,12 +124,14 @@ enum LaunchServicesClient {
     /// restoring whatever macOS would choose by default.
     static func resetDefaultApp(forExtension ext: String) throws {
         let normalizedExt = normalizedExtension(ext)
-        guard let uti = uti(forExtension: normalizedExt) else {
+        guard !normalizedExt.isEmpty else {
             throw OWError.unknownExtension(normalizedExt)
         }
+        let uti = uti(forExtension: normalizedExt)
 
         try removeHandlers(matching: { handler in
-            handlerContentType(handler) == uti || handlerFilenameExtension(handler) == normalizedExt
+            (uti != nil && handlerContentType(handler) == uti)
+                || handlerFilenameExtension(handler) == normalizedExt
         })
         refreshLaunchServices()
     }
@@ -229,16 +252,21 @@ enum LaunchServicesClient {
         }
     }
 
-    /// Mirrors Finder's Launch Services plist entries for both the resolved UTI
-    /// and the literal filename extension.
-    private static func writeToDatabase(bundleID: String, uti: String, ext: String) throws {
+    /// Mirrors Finder's Launch Services plist entries. Known file types get
+    /// both a content-type handler and a filename-extension handler. Unknown
+    /// extensions get only the filename-extension handler; Finder does not
+    /// write `dyn.*` content-type handlers for these, and neither should OW.
+    private static func writeToDatabase(bundleID: String, uti: String?, ext: String) throws {
         var root = try loadDatabaseForMutation()
         var handlers = root["LSHandlers"] as? [[String: Any]] ?? []
         handlers.removeAll { handler in
-            handlerContentType(handler) == uti || handlerFilenameExtension(handler) == ext
+            (uti != nil && handlerContentType(handler) == uti)
+                || handlerFilenameExtension(handler) == ext
         }
 
-        handlers.append(contentTypeHandler(bundleID: bundleID, uti: uti))
+        if let uti {
+            handlers.append(contentTypeHandler(bundleID: bundleID, uti: uti))
+        }
         handlers.append(filenameExtensionHandler(bundleID: bundleID, ext: ext))
         root["LSHandlers"] = handlers
 
@@ -291,9 +319,9 @@ enum LaunchServicesClient {
         return (handler["LSHandlerContentTag"] as? String)?.lowercased()
     }
 
-    private static func databaseDefaultBundleID(ext: String, uti: String) -> String? {
+    private static func databaseDefaultBundleID(ext: String, uti: String?) -> String? {
         let handlers = loadDatabase()["LSHandlers"] as? [[String: Any]] ?? []
-        if let handler = handlers.last(where: { handlerContentType($0) == uti }) {
+        if let uti, let handler = handlers.last(where: { handlerContentType($0) == uti }) {
             return roleBundleID(from: handler)
         }
         if let handler = handlers.last(where: { handlerFilenameExtension($0) == ext }) {
@@ -404,31 +432,33 @@ enum LaunchServicesClient {
 
     // MARK: - Verification
 
-    private static func currentDefaultBundleID(ext: String, uti: String) -> String? {
+    private static func currentDefaultBundleID(ext: String, uti: String?) -> String? {
         if getenv("OW_LAUNCHSERVICES_PLIST") != nil {
             return databaseDefaultBundleID(ext: ext, uti: uti)
         }
 
-        if let bundleID = defaultAppFromTemporaryFile(forExtension: ext)?.bundleID {
-            return bundleID
-        }
+        if let uti {
+            if let bundleID = defaultAppFromTemporaryFile(forExtension: ext)?.bundleID {
+                return bundleID
+            }
 
-        if let bundleID = LSCopyDefaultRoleHandlerForContentType(
-            uti as CFString, .all
-        )?.takeRetainedValue() as String? {
-            return bundleID
-        }
+            if let bundleID = LSCopyDefaultRoleHandlerForContentType(
+                uti as CFString, .all
+            )?.takeRetainedValue() as String? {
+                return bundleID
+            }
 
-        if let bundleID = LSCopyDefaultRoleHandlerForContentType(
-            uti as CFString, .viewer
-        )?.takeRetainedValue() as String? {
-            return bundleID
-        }
+            if let bundleID = LSCopyDefaultRoleHandlerForContentType(
+                uti as CFString, .viewer
+            )?.takeRetainedValue() as String? {
+                return bundleID
+            }
 
-        if let bundleID = LSCopyDefaultRoleHandlerForContentType(
-            uti as CFString, .editor
-        )?.takeRetainedValue() as String? {
-            return bundleID
+            if let bundleID = LSCopyDefaultRoleHandlerForContentType(
+                uti as CFString, .editor
+            )?.takeRetainedValue() as String? {
+                return bundleID
+            }
         }
 
         if let bundleID = databaseDefaultBundleID(ext: ext, uti: uti) {
@@ -438,7 +468,7 @@ enum LaunchServicesClient {
         return nil
     }
 
-    private static func waitForDefault(bundleID: String, ext: String, uti: String) -> Bool {
+    private static func waitForDefault(bundleID: String, ext: String, uti: String?) -> Bool {
         for _ in 0..<30 {
             if currentDefaultBundleID(ext: ext, uti: uti)?.caseInsensitiveCompare(bundleID) == .orderedSame {
                 return true
@@ -549,15 +579,16 @@ enum LaunchServicesClient {
     // MARK: - Cache invalidation
 
     private static func refreshLaunchServices() {
+        guard getenv("OW_LAUNCHSERVICES_PLIST") == nil,
+              getenv("OW_DISABLE_SYSTEM_REFRESH") == nil else {
+            return
+        }
+
         CFNotificationCenterPostNotification(
             CFNotificationCenterGetDistributedCenter(),
             CFNotificationName("com.apple.LaunchServices.databaseChanged" as CFString),
             nil, nil, true
         )
-
-        guard getenv("OW_LAUNCHSERVICES_PLIST") == nil else {
-            return
-        }
 
         restartUserAgent(named: "cfprefsd")
         restartUserAgent(named: "lsd")

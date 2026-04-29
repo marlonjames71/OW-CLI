@@ -11,6 +11,11 @@ struct Set: ParsableCommand {
           ow set .pdf Skim
           ow set .pdf                    # interactive picker
 
+        For custom extensions macOS does not recognize yet, OW writes only the
+        same filename-extension handler Finder writes from the Info pane:
+
+          ow set .owconfig TextEdit
+
         Set a per-file override for one specific file:
 
           ow set ~/Documents/report.pdf Preview
@@ -192,6 +197,15 @@ struct Set: ParsableCommand {
 
         guard !ext.isEmpty else {
             throw ValidationError("Cannot determine file type for: \(displayTarget)")
+        }
+
+        guard LaunchServicesClient.uti(forExtension: ext) != nil else {
+            throw ValidationError("""
+            Cannot open the app picker for .\(LaunchServicesClient.normalizedExtension(ext)) files because macOS has not registered that file type yet.
+
+            OW can still set the default when you provide the app:
+              ow set .\(LaunchServicesClient.normalizedExtension(ext)) <App Name>
+            """)
         }
 
         let candidates = try LaunchServicesClient.listApps(forExtension: ext)
